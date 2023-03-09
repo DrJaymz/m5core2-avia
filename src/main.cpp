@@ -1,13 +1,14 @@
 #include <Arduino.h>
 #include <M5Core2.h>
 #include "global.h"
+#include "Free_Fonts.h"
 
 TelnetSpy debug;
 ESPNowReceiver espnow;
 char string[16];
 TFT_eSprite sprite = TFT_eSprite(&M5.Lcd);
-#define GAUGE_WIDTH 200
-#define GAUGE_HEIGHT 35
+#define GAUGE_WIDTH 210
+#define GAUGE_HEIGHT 38
 
 void setup()
 {
@@ -21,7 +22,7 @@ void setup()
   /* Power chip connected to gpio21, gpio22, I2C device
          Set battery charging voltage and current
          If used battery, please call this function in your project */
-  M5.Lcd.textsize = 2;
+ // M5.Lcd.textsize = 2;
   // M5.Lcd.print("Hello World"); // Print text on the screen
   M5.Lcd.setBrightness(255);
   sprite.createSprite(GAUGE_WIDTH, GAUGE_HEIGHT);
@@ -104,39 +105,43 @@ void drawFatLineSprite(TFT_eSprite &sprite, int x, int y, int destx, int desty, 
   }
 }
 
-void drawGaugeSprite(M5Display &tft, int x, int y, int minValue, int maxValue, int value, bool isError, int labels[], int numLabels)
+void drawGaugeSprite(M5Display &tft, int x, int y, int minValue, int maxValue, int value, bool isError, int labels[], int numLabels, ColoredRange ranges[], int numRanges)
 {
   int border = 3, pointerSize = 10;
-  float pointer = (float)GAUGE_WIDTH / (float)maxValue;
-  int top = GAUGE_HEIGHT / 2;
-  int needle = (pointer * value);
+  float pointer = (float)GAUGE_WIDTH / ((float)maxValue - (float)minValue);
+  int colourTop = GAUGE_HEIGHT * 0.7;
+  int colourHeight = GAUGE_HEIGHT * 0.3;
+  int needle = (pointer * (value - minValue));
 
-  // draw outline
   sprite.fillSprite(BLACK);
-  sprite.fillRect(0, 0, border, GAUGE_HEIGHT, WHITE);
-  sprite.fillRect(GAUGE_WIDTH - border, 0, border, GAUGE_HEIGHT, WHITE);
-  sprite.fillRect(0, GAUGE_HEIGHT - border, GAUGE_WIDTH, border, WHITE);
 
   // draw colour bar
-  sprite.fillRect(border, top, GAUGE_WIDTH - border - border, (GAUGE_HEIGHT / 2) - border, GREEN);
+  sprite.fillRect(border, colourTop, GAUGE_WIDTH - border - border, colourHeight, GREEN);
 
   // draw labels
-  sprite.textdatum = CC_DATUM;
-  sprite.textsize = 1;
+  sprite.textdatum = TC_DATUM;
+  // draw color bars
+  for (int i = 0; i < numRanges; i++)
+  {
+    int start = (int)(pointer * (ranges[i].start - minValue));
+    int end = (int)(pointer * (ranges[i].end - minValue));
+    int width = end - start;
+    sprite.fillRect(start, colourTop, width, colourHeight, ranges[i].color);
+  }
+
   for (int i = 0; i < numLabels; i++)
   {
-    int pos = (int)(pointer * labels[i]);
-    sprite.setCursor(pos, 5);
-    sprite.drawFastVLine(pos, 0, GAUGE_HEIGHT, BLACK);
-    // char cstr[10];
-    // itoa(labels[i], cstr, 10);
-    // debug.printf("%i:%s ", labels[i], cstr);
-    sprite.print(labels[i]); //<-- crashes here with LoaderError
+    sprite.setFreeFont(&FreeMonoBold9pt7b);
+    int pos = (int)(pointer * (labels[i] - minValue));
+    sprite.setCursor(pos, 0);
+    sprite.fillRect(pos, colourTop, 3, colourHeight, BLACK);
+    sprite.drawCentreString((String)labels[i], pos, 5, GFXFF);
+    sprite.textcolor = LIGHTGREY;
   }
   sprite.textdatum = TL_DATUM;
 
   // draw needle
-  sprite.fillTriangle(needle - pointerSize, 0 - border, needle + pointerSize, 0 - border, needle, top, WHITE);
+  sprite.fillTriangle(needle - pointerSize, 0 - border, needle + pointerSize, 0 - border, needle, colourTop, WHITE);
 
   // if data not valid then draw red cross over the gauge
   if (isError)
@@ -151,33 +156,57 @@ void drawGaugeSprite(M5Display &tft, int x, int y, int minValue, int maxValue, i
 
 void drawGauges()
 {
+  char string[15];
+  m5.Lcd.setCursor(0, 0);
+
   int y = 20;
-  int x = 120;
-  int gauageIncrement = 55;
+  int x = 110;
+  int gauageIncrement = 50;
 
-  int labels[] = {10, 30, 50, 70, 90, 100};
-  drawGaugeSprite(M5.lcd, x, y, 0, 120, (int)sensorData.fuelLitres, sensorData.fuelQtyError, labels, 6);
-  M5.Lcd.setCursor(0, y);
-  M5.Lcd.printf("Fuel Qty \n %i  ", (int)sensorData.fuelLitres);
+  //  int labels[] = {10, 30, 50, 70, 90, 100};
 
-  y += gauageIncrement;
+  int *labels;
 
-  int labels2[] = {40, 60, 80, 110, 130};
-  drawGaugeSprite(M5.lcd, x, y, 30, 140, (int)sensorData.fuelPress, sensorData.fuelPressError, labels2, 5);
-  M5.Lcd.setCursor(0, y);
-  M5.Lcd.printf("Fuel P \n %i  ", (int)sensorData.fuelPress);
+  M5.Lcd.setFreeFont(&FreeMonoBold9pt7b);
 
-  y += gauageIncrement;
-  // int labels2[] = {40, 60, 80, 110, 130};
-  drawGaugeSprite(M5.lcd, x, y, 30, 140, (int)sensorData.oilTemp, sensorData.oilTempError, labels2, 5);
-  M5.Lcd.setCursor(0, y);
-  M5.Lcd.printf("Oil Tmp \n %i  ", (int)sensorData.oilTemp);
+  labels = new int[6]{10, 30, 50, 70, 90, 110};
+  drawGaugeSprite(M5.lcd, x, y, 0, 120, (int)sensorData.fuelLitres, sensorData.fuelQtyError, labels, 6, fuelQTYRange, fuelQTYRangeNum);
 
-  y += gauageIncrement;
-  // int labels2[] = {40, 60, 80, 110, 130};
-  drawGaugeSprite(M5.lcd, x, y, 30, 140, (int)sensorData.oilPress, sensorData.oilPressError, labels2, 5);
-  M5.Lcd.setCursor(0, y);
-  M5.Lcd.printf("Oil P \n %i  ", (int)sensorData.oilPress);
+  // M5.Lcd.setCursor(0, y);
+  // M5.Lcd.printf("Fuel Qty \n %i  ", (int)sensorData.fuelLitres);
+  M5.Lcd.drawString("Fuel", 0, y);
+  M5.Lcd.drawString("Qty", 0, y+20);
+
+  M5.Lcd.setFreeFont(&FreeSans18pt7b);
+  sprintf(string, "%i  ", (int)sensorData.fuelLitres);
+  M5.Lcd.drawString(string, 55, y+5 , GFXFF);
+  M5.Lcd.setFreeFont(&FreeMonoBold9pt7b);
+
+
+  // tft_espi
+
+  delete[] labels;
+
+  // y += gauageIncrement;
+  // labels = new int[5]{0, 50, 150, 250, 350};
+  // drawGaugeSprite(M5.lcd, x, y, 0, 350, (int)sensorData.fuelPress, sensorData.fuelPressError, labels, 5, fuelPressRange, fuelPressRangeNum);
+  // M5.Lcd.setCursor(0, y);
+  // M5.Lcd.printf("Fuel P \n %i  ", (int)sensorData.fuelPress);
+  // delete[] labels;
+
+  // y += gauageIncrement;
+  // labels = new int[5]{40, 60, 80, 110, 130};
+  // drawGaugeSprite(M5.lcd, x, y, 30, 140, (int)sensorData.oilTemp, sensorData.oilTempError, labels, 5, oilTempRange, oilTempRangeNum);
+  // M5.Lcd.setCursor(0, y);
+  // M5.Lcd.printf("Oil Tmp \n %i  ", (int)sensorData.oilTemp);
+  // delete[] labels;
+
+  // y += gauageIncrement;
+  // labels = new int[4]{0, 2, 4, 6};
+  // drawGaugeSprite(M5.lcd, x, y, 0, 7, (int)sensorData.oilPress, sensorData.oilPressError, labels, 4, oilPressRange, oilPressRangeNum);
+  // M5.Lcd.setCursor(0, y);
+  // M5.Lcd.printf("Oil P \n %i  ", (int)sensorData.oilPress);
+  // delete[] labels;
 }
 
 void loop()
