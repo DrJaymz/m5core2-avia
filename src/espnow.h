@@ -4,9 +4,11 @@
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
-
+#include "global.h"
 
 bool sensorDataUpdated = false;
+#define SENSOR_HISTORY_INTERVAL 5000  //5 seconds
+#define SENSOR_HISTORY_LENGTH 300
 
 struct SensorData
 {
@@ -19,25 +21,62 @@ struct SensorData
     float fuelLitres;
     float oilTemp;
     float oilPress;
+    float amp;
+    float cht1;
+    bool ampError;
     int frame;
+    unsigned long timestamp; // time in milliseconds
 };
 
 SensorData sensorData;
+
+// Define the array to hold the history of readings
+SensorData readings[SENSOR_HISTORY_LENGTH]; // 5 minutes x 6 readings per minute
+
+// Define a variable to keep track of the current index in the array
+int currentIndex = 0;
+
+// Function to add a new reading to the array
+void addReading(SensorData newReading)
+{
+    // Add the new reading to the array
+    newReading.timestamp = millis();
+    readings[currentIndex] = newReading;
+    // Increment the currentIndex, wrapping around to 0 when it reaches the end of the array
+    currentIndex = (currentIndex + 1) % 30;
+}
 
 class ESPNowReceiver
 {
 private:
     static void onDataReceived(const uint8_t *mac_addr, const uint8_t *data, int len)
     {
+        static unsigned long nextSavedReadingTimestamp;
+
         if (len != sizeof(SensorData))
         {
             Serial.println("Invalid data received");
             return;
         }
-        
-        memcpy(&sensorData, data, sizeof(sensorData));
 
-        Serial.printf("i: rx %i\n", sensorData.frame);
+        if (! SIMULATE)
+        {
+            memcpy(&sensorData, data, sizeof(sensorData));
+        }
+
+        if(millis() > nextSavedReadingTimestamp)
+        {
+
+            addReading(sensorData);
+            nextSavedReadingTimestamp = millis() + SENSOR_HISTORY_INTERVAL;
+            Serial.printf("i: rx %i ** saved %i **\n", sensorData.frame,currentIndex);
+        }
+        else
+        {
+            Serial.printf("i: rx %i\n", sensorData.frame);    
+        }
+
+        
         // Serial.print("  MAC address: ");
         // for (int i = 0; i < 6; i++)
         // {
@@ -49,7 +88,6 @@ private:
         // }
 
         sensorDataUpdated = true;
-
     }
 
 public:

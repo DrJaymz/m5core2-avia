@@ -1,6 +1,10 @@
 {
     "files.associations": {
         "*.json": "jsonc",
-        "new": "cpp"
+        "new": "cpp",
+        "atomic": "cpp",
+        "*.tcc": "cpp",
+        "fstream": "cpp",
+        "sstream": "cpp"
     }
 }
