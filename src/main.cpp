@@ -10,11 +10,20 @@ TFT_eSprite gSprite = TFT_eSprite(&M5.Lcd);
 TFT_eSprite pSprite = TFT_eSprite(&M5.Lcd);
 TFT_eSprite warnSprite = TFT_eSprite(&M5.Lcd);
 char timeStr[20];
+int muteUntil = 60;
+int lcdVoltage = 3100;
 
-#define GAUGE_WIDTH 200
+#define GAUGE_WIDTH 195
 #define GAUGE_HEIGHT 34
-#define PANEL_WIDTH 320 - GAUGE_WIDTH
+#define PANEL_WIDTH 320 - GAUGE_WIDTH - 5
 #define PANEL_HEIGHT GAUGE_HEIGHT
+#define RADIO_SLEEP_MS 500
+#define ENABLE_IMU 0
+
+int secondsSinceBoot()
+{
+  return (int)millis() / 1000;
+}
 
 void soundTask(void *parameter)
 {
@@ -28,8 +37,40 @@ void soundTask(void *parameter)
   }
 }
 
+void set40Mhz()
+{
+  uint32_t f = getCpuFrequencyMhz();
+  sprintf(string, "CPU Freq: %i", f);
+  M5.Lcd.println(string);
+
+  f = 40;
+
+  sprintf(string, "Trying Freq:%i", f);
+  M5.Lcd.println(string);
+
+  bool retVal = setCpuFrequencyMhz(f);
+  f = getCpuFrequencyMhz();
+
+  sprintf(string, "Actual Freq:%i retVal:%d", f, retVal);
+  M5.Lcd.println(string);
+}
+
+void SleepProcessor(uint64_t time_in_us)
+{
+  if (time_in_us > 0)
+  {
+    esp_sleep_enable_timer_wakeup(time_in_us);
+  }
+  else
+  {
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  }
+  esp_light_sleep_start();
+}
+
 void setup()
 {
+
   Serial.begin(115200);
   debug.setStoreOffline(true);
   debug.begin(115200);
@@ -38,6 +79,9 @@ void setup()
 
   M5.begin(); // Init M5Core2.  初始化 M5Core2
   M5.Lcd.setBrightness(255);
+
+  // set40Mhz();
+  // M5.Lcd.println("CPU complete");
 
   gSprite.createSprite(GAUGE_WIDTH, GAUGE_HEIGHT);
   pSprite.createSprite(PANEL_WIDTH, PANEL_HEIGHT);
@@ -59,14 +103,18 @@ void setup()
   espnow.init();
 
   //  M5.Spk.DingDong();
-  M5.Axp.SetLcdVoltage(2900);
+  M5.Axp.SetLcdVoltage(lcdVoltage);
 
   beginSD();
+
   soundsBeep(2700, 500, 100);
 
-  M5.IMU.Init(); // Init IMU sensor.
+  if (ENABLE_IMU)
+    M5.IMU.Init(); // Init IMU sensor.
 
   xTaskCreatePinnedToCore(soundTask, "soundTask", 4096, NULL, 1, NULL, 0);
+
+  espnow.pauseWiFi();
 }
 
 void drawFatLine(int x, int y, int destx, int desty, int thickness, uint32_t color)
@@ -167,11 +215,12 @@ void drawPanelSprite(M5Display &tft, int x, int y, String name, String units, fl
   }
 
   pSprite.setFreeFont(&FreeSansBold9pt7b);
-  pSprite.textsize = 1;
-  pSprite.drawString(name, 0, 0);
+  // pSprite.textsize = 1;
+  pSprite.textdatum = TC_DATUM;
+  pSprite.drawString(name, 24, 2);
 
   pSprite.setFreeFont(&FreeSansBold9pt7b);
-  pSprite.drawString(units, 0, 18);
+  pSprite.drawString(units, 24, 18);
 
   pSprite.setFreeFont(&FreeSans18pt7b);
 
@@ -185,7 +234,7 @@ void drawPanelSprite(M5Display &tft, int x, int y, String name, String units, fl
   }
 
   pSprite.textdatum = TC_DATUM;
-  pSprite.drawString(string, 85, 5, GFXFF);
+  pSprite.drawString(string, 85, 3, GFXFF);
 
   pSprite.pushSprite(x, y);
 }
@@ -201,30 +250,31 @@ void drawGauges()
   int *labels;
 
   labels = new int[6]{10, 30, 50, 70, 90, 110};
-
+  drawPanelSprite(M5.Lcd, 0, y, "FUEL", "Ltr", (int)sensorData.fuelLitres, false, fuelQTYWarning);
   drawGaugeSprite(M5.lcd, x, y, 0, 120, (int)sensorData.fuelLitres, sensorData.fuelQtyError, labels, 6, fuelQTYRange, fuelQTYRangeNum);
-  drawPanelSprite(M5.Lcd, 0, y, "FUEL", "  Ltr", (int)sensorData.fuelLitres, false, fuelQTYWarning);
+
   delete[] labels;
 
   y += gauageIncrement;
 
   labels = new int[5]{0, 50, 150, 250, 350};
+  drawPanelSprite(M5.Lcd, 0, y, "FUEL", "mb", (int)sensorData.fuelPress, false, fuelPressWarning);
   drawGaugeSprite(M5.lcd, x, y, 0, 350, (int)sensorData.fuelPress, sensorData.fuelPressError, labels, 5, fuelPressRange, fuelPressRangeNum);
-  drawPanelSprite(M5.Lcd, 0, y, "FUEL", "  mb", (int)sensorData.fuelPress, false, fuelPressWarning);
   delete[] labels;
 
   y += gauageIncrement;
 
   labels = new int[5]{40, 60, 80, 110, 130};
+  drawPanelSprite(M5.Lcd, 0, y, "O I L", "C", (int)sensorData.oilTemp, false, oilTempWarning);
   drawGaugeSprite(M5.lcd, x, y, 30, 140, (int)sensorData.oilTemp, sensorData.oilTempError, labels, 5, oilTempRange, oilTempRangeNum);
-  drawPanelSprite(M5.Lcd, 0, y, "O I L", "   C", (int)sensorData.oilTemp, false, oilTempWarning);
   delete[] labels;
 
   y += gauageIncrement;
 
   labels = new int[4]{0, 2, 4, 6};
+  drawPanelSprite(M5.Lcd, 0, y, "O I L", "bar", sensorData.oilPress, true, oilPressWarning);
   drawGaugeSprite(M5.lcd, x, y, 0, 7, sensorData.oilPress, sensorData.oilPressError, labels, 4, oilPressRange, oilPressRangeNum);
-  drawPanelSprite(M5.Lcd, 0, y, "O I L", "  bar", sensorData.oilPress, true, oilPressWarning);
+
   delete[] labels;
 }
 
@@ -316,35 +366,110 @@ void testDisplay()
 
 void drawTopBar()
 {
+  M5.Lcd.textcolor = GREEN;
+  M5.Lcd.textbgcolor = BLACK;
   M5.Lcd.textsize = 2;
-  m5.Lcd.setCursor(0, 0);
-  M5.Lcd.printf("BUS %4.1fV %2iA        %c %3.0f\n",
+
+  if (sensorData.batteryVoltage < 12.5 || sensorData.amp < 0)
+  {
+    M5.Lcd.textcolor = YELLOW;
+  }
+
+  if (sensorData.batteryVoltage < 12.0)
+  {
+    M5.Lcd.textcolor = WHITE;
+    M5.Lcd.textbgcolor = RED;
+  }
+
+  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.printf("BUS %4.1fV %2iA ",
                 sensorData.batteryVoltage,
-                (int)sensorData.amp,
+                (int)sensorData.amp);
+
+  M5.Lcd.textcolor = WHITE;
+  M5.Lcd.textbgcolor = BLACK;
+
+  M5.Lcd.setCursor(200, 0);
+  // M5.Lcd.printf("%c %3.0f %d ",
+  //               sdPresent ? 'S' : '-',
+  //               M5.Axp.GetBatteryLevel(),
+  //               M5.Axp.isCharging());
+
+  M5.Lcd.printf("%c %3.0f %3.0f ",
                 sdPresent ? 'S' : '-',
-                M5.Axp.GetBatteryLevel());
+                M5.Axp.GetBatteryLevel(),
+                M5.Axp.GetBatCurrent());
+
+  for (size_t i = 0; i < 3; i++)
+  {
+    M5.Lcd.drawFastHLine(0, 20 + i, M5.Lcd.width(), WHITE);
+  }
 
   //(int)M5.Axp.GetBatCurrent(),
 }
 
 void drawBottomBar()
 {
-  m5.Lcd.setCursor(0, 225);
-  M5.Lcd.printf("G:%4.1f ", accY);
+  M5.Lcd.textcolor = WHITE;
+  M5.Lcd.textbgcolor = BLACK;
+
+  if (ENABLE_IMU)
+  {
+    m5.Lcd.setCursor(0, 225);
+    M5.Lcd.printf("G:%4.1f ", accY);
+  }
 
   m5.Lcd.setCursor(100, 225);
   M5.Lcd.printf("CHT:%3.0f ", sensorData.cht1);
 
   m5.Lcd.setCursor(230, 225);
-  M5.Lcd.printf("%6i", sensorData.frame);
+  M5.Lcd.printf("%6i ", sensorData.frame);
 }
 
 void loop()
 {
   static unsigned long lastUpdated;
+  static int nextSecond = millis() + 1000;
+  static int nextUpdate = millis() + RADIO_SLEEP_MS;
+  static bool newData = false;
+
+  // very rough touch detection - i.e. doesn't work when device sleeping. 
+  // touch on the left will decrease brightness touch on the right will increase brightness.
+  if (M5.Touch.ispressed())
+  {
+
+    muteUntil = secondsSinceBoot() + 60;
+    Point p = M5.Touch.getPressPoint();
+
+    // Get touch position
+    int16_t x = M5.Touch.point->x;
+    int16_t y = M5.Touch.point->y;
+
+    // right touch - brighter
+    if (x > 160 && x < 320 && lcdVoltage < 3300)
+    {
+      lcdVoltage += 100;
+      soundsBeep(2700, 25, 100);
+    }
+
+    // left touch - dimmer
+    if (x > 10 && x < 160 && lcdVoltage > 2500)
+    {
+      lcdVoltage -= 100;
+      soundsBeep(2500, 25, 100);
+    }
+
+    Serial.printf("Touch position: x=%d, y=%d LCD=%d\n", x, y, lcdVoltage);
+
+    M5.Axp.SetLcdVoltage(lcdVoltage);
+  }
 
   if (sensorDataUpdated)
   {
+
+    if (POWER_SAVE)
+      espnow.pauseWiFi();
+
     if (millis() - lastUpdated > 5000)
       M5.lcd.clearDisplay();
 
@@ -353,7 +478,7 @@ void loop()
 
     // check for anything in the red:
     int warning = checkRanges();
-    if (warning > 1 && !MUTE)
+    if (warning > 1 && !MUTE && secondsSinceBoot() > muteUntil)
     {
       alarmSound = 1;
     }
@@ -362,10 +487,7 @@ void loop()
       alarmSound = 0;
     }
 
-    // warnSprite.fillSprite(BLACK);
-    // warnSprite.pushSprite(0, 220);
-
-    M5.IMU.getAccelData(&accX, &accY, &accZ);
+    if (ENABLE_IMU)  M5.IMU.getAccelData(&accX, &accY, &accZ);
 
     // draw the actual gauges
     drawGauges();
@@ -374,25 +496,42 @@ void loop()
 
     sensorDataUpdated = false;
     lastUpdated = millis();
+    newData = true;
+    SleepProcessor(1000 * RADIO_SLEEP_MS);
   }
 
+  //check for lack of valid data for 5 seconds - if so then the display must change to indicate unreliable data.
   if (millis() - lastUpdated > 5000)
   {
-    // M5.Lcd.fillScreen(BLACK);
-
+    drawGauges();
     drawFatLine(0, 0, 320, 240, 10, RED);
     drawFatLine(0, 240, 320, 0, 10, RED);
-    delay(100);
+
+    drawTopBar();
+    drawBottomBar();
+
+    if (POWER_SAVE)
+      espnow.pauseWiFi();
+    SleepProcessor(1000000); // low power sleep for 1 sec
+    
   }
 
-  static int nextSecond = millis() + 1000;
-
+  // task for every second
   if (millis() > nextSecond)
   {
 
     getRtcTime(timeStr, sizeof(timeStr));
     debug.printf("i: Time %s\n", timeStr);
     nextSecond = millis() + 1000;
-    writeSD();
+    //only if there is actually received valid data, then write to the SD card.
+    if(newData) writeSD();
+  }
+
+  //allow new data
+  if (millis() > nextUpdate)
+  {
+    nextUpdate = millis() + RADIO_SLEEP_MS;
+    if (POWER_SAVE)
+      espnow.resumeWiFi();
   }
 }

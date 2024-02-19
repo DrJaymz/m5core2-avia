@@ -4,6 +4,7 @@
 #define HOSTNAME "AVIA"
 #define SIMULATE 0
 #define MUTE 1
+#define POWER_SAVE 1
 
 #include <Arduino.h>
 #include <TelnetSpy.h>

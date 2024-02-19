@@ -7,7 +7,7 @@
 #include "global.h"
 
 bool sensorDataUpdated = false;
-#define SENSOR_HISTORY_INTERVAL 5000  //5 seconds
+#define SENSOR_HISTORY_INTERVAL 5000 // 5 seconds
 #define SENSOR_HISTORY_LENGTH 300
 
 struct SensorData
@@ -59,24 +59,23 @@ private:
             return;
         }
 
-        if (! SIMULATE)
+        if (!SIMULATE)
         {
             memcpy(&sensorData, data, sizeof(sensorData));
         }
 
-        if(millis() > nextSavedReadingTimestamp)
+        if (millis() > nextSavedReadingTimestamp)
         {
 
             addReading(sensorData);
             nextSavedReadingTimestamp = millis() + SENSOR_HISTORY_INTERVAL;
-            Serial.printf("i: rx %i ** saved %i **\n", sensorData.frame,currentIndex);
+            Serial.printf("i: rx %i ** saved %i **\n", sensorData.frame, currentIndex);
         }
         else
         {
-            Serial.printf("i: rx %i\n", sensorData.frame);    
+            Serial.printf("i: rx %i\n", sensorData.frame);
         }
 
-        
         // Serial.print("  MAC address: ");
         // for (int i = 0; i < 6; i++)
         // {
@@ -88,6 +87,7 @@ private:
         // }
 
         sensorDataUpdated = true;
+
     }
 
 public:
@@ -120,6 +120,7 @@ public:
 
     bool init()
     {
+
         WiFi.mode(WIFI_STA);
         if (esp_now_init() != ESP_OK)
         {
@@ -132,6 +133,30 @@ public:
             esp_now_register_recv_cb(onDataReceived);
         }
         return true;
+    }
+
+    void pauseWiFi()
+    {
+        esp_now_deinit();
+        WiFi.mode(WIFI_OFF);
+        Serial.println("Wi-Fi paused");
+    }
+
+    bool resumeWiFi()
+    {
+        Serial.printf("Resume Wifi heap: %u\n",esp_get_free_heap_size());
+        WiFi.mode(WIFI_STA);
+        if (esp_now_init() == ESP_OK)
+        {
+            esp_now_register_recv_cb(onDataReceived);
+            Serial.println("ESP-NOW resumed successfully");
+            return true;
+        }
+        else
+        {
+            Serial.println("Error initializing ESP-NOW");
+            return false;
+        }
     }
 };
 
