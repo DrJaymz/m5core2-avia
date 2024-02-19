@@ -331,6 +331,10 @@ void drawBottomBar()
 {
   m5.Lcd.setCursor(0, 225);
   M5.Lcd.printf("G:%4.1f ", accY);
+
+  m5.Lcd.setCursor(100, 225);
+  M5.Lcd.printf("CHT:%3.0f ", sensorData.cht1);
+
   m5.Lcd.setCursor(230, 225);
   M5.Lcd.printf("%6i", sensorData.frame);
 }
